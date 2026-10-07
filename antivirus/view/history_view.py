@@ -8,6 +8,7 @@ from antivirus.view.theme import status_color
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -28,6 +29,7 @@ from antivirus.view.components import (
 
 class HistoryView(QWidget):
     history_changed = Signal()
+    results_requested = Signal(object)
 
     def __init__(self, controller=None, parent=None):
         super().__init__(parent)
@@ -57,9 +59,18 @@ class HistoryView(QWidget):
         heading.addWidget(self.clear_button)
         layout.addLayout(heading)
 
-        self.table = QTableWidget(0, 7, self)
+        self.table = QTableWidget(0, 8, self)
         self.table.setHorizontalHeaderLabels(
-            ["Started", "Type", "Target", "Files", "Threats", "Duration", "Result"]
+            [
+                "Started",
+                "Type",
+                "Target",
+                "Files",
+                "Threats",
+                "Duration",
+                "Result",
+                "View",
+            ]
         )
         configure_table(self.table)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -70,7 +81,15 @@ class HistoryView(QWidget):
         self.table.setColumnWidth(3, 65)
         self.table.setColumnWidth(4, 70)
         self.table.setColumnWidth(5, 80)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setColumnWidth(6, 90)
+        self.table.setColumnWidth(7, 100)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
+        )
+        self.table.horizontalHeader().setSectionResizeMode(
+            7, QHeaderView.ResizeMode.Fixed
+        )
         self.table.hide()
         layout.addWidget(self.table, 1)
 
@@ -130,6 +149,18 @@ class HistoryView(QWidget):
                 if column == 6:
                     item.setForeground(QColor(status_color(record.get("status", ""))))
                 self.table.setItem(row, column, item)
+            results_button = QPushButton("Results", self.table)
+            results_button.setProperty("compact", True)
+            results_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            results_button.setAccessibleName(
+                f"Open results for scan started {values[0]}"
+            )
+            results_button.clicked.connect(
+                lambda _checked=False, saved_record=record: self.results_requested.emit(
+                    saved_record
+                )
+            )
+            self.table.setCellWidget(row, 7, results_button)
         has_records = bool(records)
         if not has_records:
             self.empty_state.set_message(

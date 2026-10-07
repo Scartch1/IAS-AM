@@ -10,7 +10,7 @@ from antivirus.model.scan_report import ScanReport
 from antivirus.model.scan_result import ScanResult
 from antivirus.model.scan_status import ScanStatus
 from antivirus.view.scan_view import ScanView
-from antivirus.view.results_view import ResultsView
+from antivirus.view.results_view import ResultsDialog, ResultsView
 from antivirus.view.main_window import MainWindow
 
 
@@ -105,12 +105,25 @@ def test_skipped_results_filter_and_exports(qapp):
     view.close()
 
 
+def test_results_dialog_is_modal_and_populates_saved_report(qapp):
+    report = ScanReport()
+    report.add_result(ScanResult("safe.txt"))
+    dialog = ResultsDialog(report)
+    assert dialog.isModal()
+    assert dialog.results_view.report is report
+    assert dialog.results_view.table.rowCount() == 1
+    dialog.close()
+
+
 def test_navigation_uses_named_page_indices_and_keeps_settings_preferences(qapp):
     settings = QSettings("IAS", "PremiereSecurity")
     settings.clear()
     window = MainWindow()
     window.show()
-    for index in range(len(window.PAGE_NAMES)):
+    assert "Results" not in [
+        button.text() for button in window.navigation._buttons
+    ]
+    for index in window.NAVIGATION_PAGES:
         window.navigation.setCurrentIndex(index)
         assert window.pages.currentIndex() == index
     saved = window.settings_view.values()

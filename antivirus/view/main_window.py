@@ -24,7 +24,7 @@ from antivirus.services.statistics_service import StatisticsService
 from antivirus.view.branding import AppLogo
 from antivirus.view.dashboard_view import DashboardView
 from antivirus.view.history_view import HistoryView
-from antivirus.view.results_view import ResultsView
+from antivirus.view.results_view import ResultsDialog, ResultsView
 from antivirus.view.scan_view import ScanView
 from antivirus.view.settings_view import SettingsView
 from antivirus.view.network_tab import NetworkMonitorTab
@@ -43,32 +43,39 @@ class TopNavigation(QWidget):
 
     currentChanged = Signal(int)
 
-    def __init__(self, page_names, parent=None):
+    def __init__(self, page_names, page_indexes=None, parent=None):
         super().__init__(parent)
         self._current_index = -1
         self._buttons: list[QPushButton] = []
+        self._page_indexes = tuple(
+            range(len(page_names)) if page_indexes is None else page_indexes
+        )
+        if len(page_names) != len(self._page_indexes):
+            raise ValueError("Navigation page names and indexes must match.")
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
-        for index, name in enumerate(page_names):
+        for button_index, (name, page_index) in enumerate(
+            zip(page_names, self._page_indexes)
+        ):
             button = QPushButton(name, self)
             button.setCheckable(True)
             button.setProperty("nav", True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(
-                lambda _checked=False, page=index: self.setCurrentIndex(page)
+                lambda _checked=False, page=page_index: self.setCurrentIndex(page)
             )
-            self._group.addButton(button, index)
+            self._group.addButton(button, button_index)
             self._buttons.append(button)
             layout.addWidget(button, 1)
 
     def setCurrentIndex(self, index: int) -> None:
-        if not 0 <= index < len(self._buttons):
+        if index not in self._page_indexes:
             return
-        self._buttons[index].setChecked(True)
+        self._buttons[self._page_indexes.index(index)].setChecked(True)
         if index == self._current_index:
             return
         self._current_index = index
@@ -91,6 +98,7 @@ class MainWindow(QMainWindow):
         "Settings",
     )
     DASHBOARD, SCAN, RESULTS, QUARANTINE, HISTORY, NETWORK, SETTINGS = range(7)
+    NAVIGATION_PAGES = (DASHBOARD, SCAN, QUARANTINE, HISTORY, NETWORK, SETTINGS)
     download_ready = Signal(object)
     monitor_failed = Signal(str)
 
@@ -150,7 +158,11 @@ class MainWindow(QMainWindow):
         self.theme_button.toggled.connect(self._set_theme)
         self._update_theme_button()
 
-        self.navigation = TopNavigation(self.PAGE_NAMES, top_bar)
+        self.navigation = TopNavigation(
+            [self.PAGE_NAMES[index] for index in self.NAVIGATION_PAGES],
+            self.NAVIGATION_PAGES,
+            top_bar,
+        )
         self.navigation.setObjectName("TopNavigation")
 
         branding.addWidget(mark)
@@ -221,6 +233,7 @@ class MainWindow(QMainWindow):
         )
         self.settings_view.setting_changed.connect(self._setting_changed)
         self.history_view.history_changed.connect(self._refresh_dashboard)
+        self.history_view.results_requested.connect(self._show_history_result)
         self.results_view.quarantine_requested.connect(self._quarantine_result)
         self.quarantine_view.item_changed.connect(self.results_view.quarantine_changed)
         self.quarantine_view.busy_changed.connect(self._vault_busy_changed)
@@ -334,16 +347,31 @@ class MainWindow(QMainWindow):
             report = ScanReport()
             report.add_result(result)
         self.results_view.show_report(report)
+        self._show_results_dialog(report)
         if (
             self.pages.currentIndex() == self.SETTINGS
             and self.settings_view.has_unsaved_changes()
         ):
-            self.statusBar().showMessage(
-                "Your scan results are ready. Save or discard settings, then open Results."
-            )
+            self.statusBar().showMessage("Your scan results are ready for review.")
         else:
-            self.navigation.setCurrentIndex(self.RESULTS)
+            self.statusBar().showMessage("Scan results were reviewed in the Results popup.")
         self._refresh_dashboard()
+
+    def _show_history_result(self, record):
+        report_data = record.get("report", {})
+        report = (
+            ScanReport.from_dict(report_data)
+            if report_data
+            else ScanReport.from_history_record(record)
+        )
+        self.results_view.show_report(report)
+        self._show_results_dialog(report)
+
+    def _show_results_dialog(self, report):
+        """Keep scan results in a modal review window until its X is clicked."""
+
+        dialog = ResultsDialog(report, self)
+        dialog.exec()
 
     def _set_download_monitor(self, enabled):
         if not enabled:

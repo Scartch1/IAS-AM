@@ -11,6 +11,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -409,3 +410,32 @@ class ResultsView(QWidget):
             QMessageBox.warning(self, "Export failed", str(exc))
             return
         QMessageBox.information(self, "Report exported", f"Saved to:\n{path}")
+
+
+class ResultsDialog(QDialog):
+    """A blocking result review window that is closed from its title-bar X."""
+
+    def __init__(self, report, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Scan results")
+        self.setModal(True)
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setWindowFlags(
+            Qt.WindowType.Dialog
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setMinimumSize(960, 650)
+        self.resize(1100, 760)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.results_view = ResultsView(self)
+        self.results_view.show_report(report)
+        layout.addWidget(self.results_view)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            event.ignore()
+            return
+        super().keyPressEvent(event)

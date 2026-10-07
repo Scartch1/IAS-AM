@@ -2,6 +2,7 @@
 
 from antivirus.model.scan_result import ScanResult
 from antivirus.model.scan_report import ScanReport
+from antivirus.services.report_formatter import ReportFormatter
 from antivirus.services.scanner import Scanner
 from antivirus.repository.scan_repository import ScanRepository
 from pathlib import Path
@@ -131,6 +132,7 @@ class ScanController:
                 threats=threats,
                 skipped_files=report.skipped_files,
                 warnings=report.warnings,
+                report=ReportFormatter.to_dict(report),
             )
         except Exception:
             logger.exception("Could not persist scan history")

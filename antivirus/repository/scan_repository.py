@@ -39,6 +39,7 @@ class ScanRepository:
                 "threats": "TEXT NOT NULL DEFAULT '[]'",
                 "skipped_files": "INTEGER NOT NULL DEFAULT 0",
                 "warnings": "TEXT NOT NULL DEFAULT '[]'",
+                "report": "TEXT NOT NULL DEFAULT '{}'",
             }
             for column, declaration in migrations.items():
                 if column not in existing_columns:
@@ -64,6 +65,7 @@ class ScanRepository:
         threats: Optional[List[Dict[str, Any]]] = None,
         skipped_files: int = 0,
         warnings: list[str] | None = None,
+        report: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         import datetime
 
@@ -87,8 +89,8 @@ class ScanRepository:
                     target,
                     scan_type,
                     duration,
-                    threats, skipped_files, warnings
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    threats, skipped_files, warnings, report
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     started_value,
@@ -104,6 +106,7 @@ class ScanRepository:
                     json.dumps(threats or []),
                     skipped_files,
                     json.dumps(warnings or []),
+                    json.dumps(report or {}),
                 ),
             )
             connection.commit()
@@ -126,6 +129,7 @@ class ScanRepository:
             "threats": threats or [],
             "skipped_files": skipped_files,
             "warnings": warnings or [],
+            "report": report or {},
         }
 
     def get_recent_scans(self, limit: int | None = 10) -> List[Dict[str, Any]]:
@@ -135,7 +139,7 @@ class ScanRepository:
                 """
                 SELECT id, started_at, completed_at, file_count, threats_found,
                        clean_files, error_files, status, target, scan_type, duration, threats,
-                       skipped_files, warnings
+                       skipped_files, warnings, report
                 FROM scan_history
                 ORDER BY id DESC
                 LIMIT ?
@@ -167,6 +171,7 @@ class ScanRepository:
                     "threats": threats,
                     "skipped_files": row[12],
                     "warnings": self._read_list(row[13]),
+                    "report": self._read_dict(row[14]),
                 }
             )
         return records
@@ -178,6 +183,14 @@ class ScanRepository:
             return parsed if isinstance(parsed, list) else []
         except (json.JSONDecodeError, TypeError):
             return []
+
+    @staticmethod
+    def _read_dict(value):
+        try:
+            parsed = json.loads(value or "{}")
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
 
     def clear_history(self) -> int:
         """Delete scan-history rows and return the number removed."""
